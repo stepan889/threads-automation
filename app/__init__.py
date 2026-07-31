@@ -1,0 +1,2 @@
+"""Threads Telegram bot application."""
+
