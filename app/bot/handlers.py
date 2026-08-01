@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime, timezone
 from html import escape
 
 from aiogram import F, Router
@@ -13,8 +13,9 @@ from app.config import Settings
 from app.repository import get_or_create_state, recent_posts
 from app.scheduler import AutopostScheduler
 from app.services.errors import ServiceError
+from app.services.discovery import DiscoveryWorkflow, PreparedDiscovery
 from app.services.oauth_state import OAuthStateCodec
-from app.services.threads import ThreadsClient
+from app.services.threads import PublicThread, ThreadsClient
 from app.services.workflow import PublishingWorkflow
 
 router = Router()
@@ -62,26 +63,46 @@ async def toggle(callback: CallbackQuery, session: AsyncSession, settings: Setti
     await callback.answer()
 
 
-async def _generate_preview(callback: CallbackQuery, session: AsyncSession, settings: Settings, workflow: PublishingWorkflow, fsm: FSMContext) -> None:
+async def _generate_preview(callback: CallbackQuery, session: AsyncSession, settings: Settings,
+                            workflow: PublishingWorkflow, discovery: DiscoveryWorkflow | None,
+                            fsm: FSMContext) -> None:
     state = await _state(session, callback.from_user.id, settings)
     status_message = await callback.message.answer("⏳ Генерирую пост…")  # type: ignore[union-attr]
     try:
-        generated = await workflow.generate(state)
-        await fsm.update_data(draft=generated.text)
-        await status_message.edit_text(f"Предпросмотр:\n\n{escape(generated.text)}", reply_markup=preview_menu(), parse_mode="HTML")
+        if discovery is not None:
+            prepared = await discovery.prepare(session, state)
+            if prepared is None:
+                await status_message.edit_text("Новых качественных источников недостаточно. Публикация пропущена.")
+                return
+            await fsm.update_data(draft=prepared.text, discovery_sources=[{
+                "id": item.id, "text": item.text, "username": item.username,
+                "timestamp": item.timestamp.isoformat(), "permalink": item.permalink,
+                "topic_tag": item.topic_tag,
+            } for item in prepared.sources])
+            text = prepared.text
+        else:
+            generated = await workflow.generate(state)
+            await fsm.update_data(draft=generated.text, discovery_sources=None)
+            text = generated.text
+        await status_message.edit_text(f"Предпросмотр:\n\n{escape(text)}", reply_markup=preview_menu(), parse_mode="HTML")
     except ServiceError as exc:
         await status_message.edit_text(f"Не удалось сгенерировать пост: {escape(str(exc))}", parse_mode="HTML")
 
 
 @router.callback_query(F.data.in_({"post_now", "regenerate"}))
-async def post_now(callback: CallbackQuery, session: AsyncSession, settings: Settings, workflow: PublishingWorkflow, state: FSMContext) -> None:
+async def post_now(callback: CallbackQuery, session: AsyncSession, settings: Settings,
+                   workflow: PublishingWorkflow, discovery: DiscoveryWorkflow | None,
+                   state: FSMContext) -> None:
     await callback.answer()
-    await _generate_preview(callback, session, settings, workflow, state)
+    await _generate_preview(callback, session, settings, workflow, discovery, state)
 
 
 @router.callback_query(F.data == "publish_draft")
-async def publish_draft(callback: CallbackQuery, session: AsyncSession, settings: Settings, workflow: PublishingWorkflow, state: FSMContext) -> None:
-    draft = (await state.get_data()).get("draft")
+async def publish_draft(callback: CallbackQuery, session: AsyncSession, settings: Settings,
+                        workflow: PublishingWorkflow, discovery: DiscoveryWorkflow | None,
+                        state: FSMContext) -> None:
+    data = await state.get_data()
+    draft = data.get("draft")
     if not draft:
         await callback.answer("Черновик устарел. Сгенерируйте заново.", show_alert=True)
         return
@@ -92,9 +113,18 @@ async def publish_draft(callback: CallbackQuery, session: AsyncSession, settings
     await callback.answer()
     await callback.message.edit_text("⏳ Публикую в Threads…")  # type: ignore[union-attr]
     bot_state = await _state(session, callback.from_user.id, settings)
-    post = await workflow.publish_text(session, bot_state, draft)
+    source_data = data.get("discovery_sources")
+    if discovery is not None and source_data:
+        sources = tuple(PublicThread(item["id"], item["text"], item.get("username"),
+                        datetime.fromisoformat(item["timestamp"]), item.get("permalink"),
+                        item.get("topic_tag")) for item in source_data)
+        post = await discovery.publish_prepared(session, bot_state, PreparedDiscovery(draft, sources))
+    else:
+        post = await workflow.publish_text(session, bot_state, draft)
     await state.clear()
-    if post.status == "published":
+    if post is None:
+        await callback.message.edit_text("ℹ️ Этот материал уже был опубликован. Повтор пропущен.")  # type: ignore[union-attr]
+    elif post.status == "published":
         await callback.message.edit_text(f"✅ Опубликовано. ID: {escape(post.external_id or '')}", parse_mode="HTML")  # type: ignore[union-attr]
     else:
         await callback.message.edit_text(f"❌ Не опубликовано: {escape(post.diagnostic or 'неизвестная ошибка')}", parse_mode="HTML")  # type: ignore[union-attr]

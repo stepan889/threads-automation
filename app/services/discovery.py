@@ -49,6 +49,12 @@ class DiscoveryOptions:
     blocked_phrases: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class PreparedDiscovery:
+    text: str
+    sources: tuple[PublicThread, ...]
+
+
 def filter_sources(items: list[PublicThread], *, cutoff: datetime, own_username: str | None,
                    seen_ids: set[str], seen_hashes: set[str], min_length: int,
                    threshold: float) -> list[PublicThread]:
@@ -75,6 +81,13 @@ class DiscoveryWorkflow:
         logger.info("discovery_cycle_start telegram_id=%s topics=%s", state.telegram_id, list(self.options.keywords))
         if self.options.max_posts_per_run < 1:
             return None
+        prepared = await self.prepare(session, state)
+        if prepared is None:
+            return None
+        return await self.publish_prepared(session, state, prepared)
+
+    async def prepare(self, session: AsyncSession, state: BotState) -> PreparedDiscovery | None:
+        """Collect, validate and generate a discovery post without publishing it."""
         if not state.threads_access_token or not state.threads_connected:
             raise ServiceError("Аккаунт Threads не подключён.")
         token = self.cipher.decrypt(state.threads_access_token)
@@ -107,15 +120,17 @@ class DiscoveryWorkflow:
                   "\n---\n".join(item.text for item in filtered))
         generated = await self.generator.generate(prompt, state.system_prompt)
         candidate = generated.text.strip()
-        for item in filtered:
-            session.add(DiscoverySource(source_id=item.id, telegram_id=state.telegram_id,
-                        text_hash=text_hash(item.text), source_timestamp=item.timestamp))
-        await session.commit()
         recent = list(await session.scalars(select(Post).where(Post.telegram_id == state.telegram_id, Post.status == "published").order_by(Post.created_at.desc()).limit(20)))
         reason = self._invalid_reason(candidate, filtered, recent)
         if reason:
             logger.info("discovery_skip telegram_id=%s reason=%s", state.telegram_id, reason)
             return None
+        return PreparedDiscovery(candidate, tuple(filtered))
+
+    async def publish_prepared(self, session: AsyncSession, state: BotState,
+                               prepared: PreparedDiscovery) -> Post | None:
+        """Idempotently publish a previously reviewed discovery draft."""
+        candidate, filtered = prepared.text, list(prepared.sources)
         digest = text_hash(candidate)
         run = DiscoveryRun(telegram_id=state.telegram_id, content_hash=digest, status="reserved")
         session.add(run)
@@ -127,7 +142,11 @@ class DiscoveryWorkflow:
             return None
         post = await self.publisher.publish_text(session, state, candidate)
         run.status, run.post_id = post.status, post.id
-        if post.status != "published":
+        if post.status == "published":
+            for item in filtered:
+                session.add(DiscoverySource(source_id=item.id, telegram_id=state.telegram_id,
+                            text_hash=text_hash(item.text), source_timestamp=item.timestamp))
+        else:
             run.diagnostic = post.diagnostic
         await session.commit()
         logger.info("discovery_cycle_end telegram_id=%s status=%s post_id=%s external_id=%s", state.telegram_id, post.status, post.id, post.external_id)

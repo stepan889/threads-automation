@@ -89,3 +89,32 @@ async def test_success_persists_sources_and_prevents_repeat() -> None:
         assert await flow.run(session, state) is None
         assert threads.published == 1
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_manual_prepare_does_not_publish_until_confirmed() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    from app.services.workflow import PublishingWorkflow
+
+    items = [source("manual-a", "Подробная публикация о применении инструментов в работе команд"),
+             source("manual-b", "Содержательное наблюдение об изменениях в продуктовой аналитике")]
+    threads = FakeThreads(items)
+    generator = FakeGenerator("Инструменты меняются быстро, но результат по-прежнему зависит от качества решений команды.")
+    publisher = PublishingWorkflow(generator, threads, FakeCipher())
+    flow = DiscoveryWorkflow(generator, threads, FakeCipher(), publisher, options())
+    async with factory() as session:
+        state = BotState(telegram_id=9, threads_connected=True, threads_access_token="x", threads_user_id="u",
+                         threads_token_expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+        prepared = await flow.prepare(session, state)
+        assert prepared is not None
+        assert threads.published == 0
+        assert not list(await session.scalars(__import__('sqlalchemy').select(DiscoverySource)))
+
+        post = await flow.publish_prepared(session, state, prepared)
+        assert post is not None and post.status == "published"
+        assert threads.published == 1
+        assert len(list(await session.scalars(__import__('sqlalchemy').select(DiscoverySource)))) == 2
+    await engine.dispose()

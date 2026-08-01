@@ -45,7 +45,8 @@ async def main() -> None:
     dispatcher.callback_query.middleware(AdminOnlyMiddleware(settings.admin_telegram_ids))
     dispatcher.include_router(router)
     try:
-        await dispatcher.start_polling(bot, settings=settings, workflow=workflow, threads=threads, oauth_state=oauth_state, autopost=autopost)
+        await dispatcher.start_polling(bot, settings=settings, workflow=workflow, discovery=discovery,
+                                       threads=threads, oauth_state=oauth_state, autopost=autopost)
     finally:
         autopost.shutdown()
         await generator.close(); await threads.close(); await bot.session.close()
