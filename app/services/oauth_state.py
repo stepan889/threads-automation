@@ -20,8 +20,9 @@ class OAuthStateCodec:
     def decode(self, state: str) -> int:
         try:
             raw = base64.urlsafe_b64decode(state + "=" * (-len(state) % 4))
-            payload, signature = raw.rsplit(b":", 1)
-            telegram_id, issued = payload.decode().split(":", 1)
+            telegram_raw, issued_raw, signature = raw.split(b":", 2)
+            payload = telegram_raw + b":" + issued_raw
+            telegram_id, issued = telegram_raw.decode(), issued_raw.decode()
             valid = hmac.compare_digest(signature, hmac.new(self.secret, payload, hashlib.sha256).digest())
             if not valid or time.time() - int(issued) > self.ttl or int(issued) > time.time() + 30:
                 raise ValueError

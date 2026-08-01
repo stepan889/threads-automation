@@ -95,8 +95,23 @@ git check-ignore .env
 | `OAUTH_STATE_TTL_SECONDS` | переменная | `600` |
 | `DEFAULT_POST_INTERVAL_MINUTES` | переменная | например `60` |
 | `LOG_LEVEL` | переменная | `INFO` |
+| `THREADS_DISCOVERY_ENABLED` | переменная | `false`, затем `true` после проверки API-доступа |
+| `THREADS_DISCOVERY_KEYWORDS` | переменная | темы через запятую |
+| `THREADS_DISCOVERY_SEARCH_LIMIT` | переменная | `30` |
+| `THREADS_DISCOVERY_LOOKBACK_HOURS` | переменная | `24` |
+| `THREADS_DISCOVERY_MIN_SOURCES` | переменная | `5` |
+| `THREADS_DISCOVERY_MAX_POSTS_PER_RUN` | переменная | `1` |
+| `THREADS_DISCOVERY_MIN_TEXT_LENGTH` | переменная | `40` |
+| `THREADS_DISCOVERY_SIMILARITY_THRESHOLD` | переменная | `0.82` |
+| `THREADS_DISCOVERY_BLOCKED_PHRASES` | переменная | необязательный список через запятую |
 
 `POSTGRES_PASSWORD` приложению не нужен: он уже входит в `DATABASE_URL`.
+
+Discovery использует тот же зашифрованный Threads access token. У приложения Meta должен быть
+одобрен доступ к keyword search для публичных публикаций; доступность endpoint и набор полей
+зависят от версии API, режима приложения и выданных Meta разрешений. Сначала разверните с
+`THREADS_DISCOVERY_ENABLED=false`, проверьте миграцию и `/ready`, затем включите режим одной
+переменной. Реальный пост для проверки создавать не требуется.
 
 ## 5. Одноразово импортировать токен отдельного Threads-пользователя
 
