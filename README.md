@@ -26,7 +26,7 @@
 2. Создайте OpenRouter API key и задайте точный slug модели в `OPENROUTER_MODEL`. Код использует `POST /api/v1/chat/completions` с Bearer-аутентификацией.
 3. Сгенерируйте `TOKEN_ENCRYPTION_KEY` один раз командой из `.env.example`. Не меняйте ключ, пока в БД есть подключения: старые токены перестанут расшифровываться.
 4. Нужен публичный HTTPS-адрес API (например, домен или HTTPS-туннель на порт 8000). Укажите точный URI вида `https://bot.example.com/oauth/threads/callback` в `THREADS_REDIRECT_URI`.
-5. В Meta for Developers создайте приложение с Threads API, добавьте Threads use case, настройте Threads App ID/Secret и OAuth Redirect URL **в точности** равный `THREADS_REDIRECT_URI`. Добавьте тестового Threads-пользователя до публикации приложения либо пройдите App Review. Запросите permissions `threads_basic` и `threads_content_publish`.
+5. В Meta for Developers создайте приложение с Threads API, добавьте Threads use case, настройте Threads App ID/Secret и OAuth Redirect URL **в точности** равный `THREADS_REDIRECT_URI`. Добавьте тестового Threads-пользователя до публикации приложения либо пройдите App Review. Для discovery нужны permissions `threads_basic`, `threads_content_publish` и `threads_keyword_search`.
 
 Ссылка кнопки «Подключить Threads» ведёт на `https://threads.net/oauth/authorize`. Callback меняет authorization code на short-lived token, затем на long-lived token, получает `/me` и сохраняет токен зашифрованным. Публикация выполняет два официальных шага: `/{threads-user-id}/threads` с `media_type=TEXT`, затем `/{threads-user-id}/threads_publish`.
 

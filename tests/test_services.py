@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -6,6 +7,15 @@ import pytest
 from app.services.errors import ServiceError
 from app.services.openrouter import OpenRouterPostGenerator, THREADS_TEXT_LIMIT
 from app.services.threads import ThreadsClient
+
+
+def test_threads_authorization_url_requests_keyword_search() -> None:
+    url = ThreadsClient("id", "secret", "https://example.test/cb").authorization_url("state")
+    params = parse_qs(urlparse(url).query)
+    assert set(params["scope"][0].split(",")) == {
+        "threads_basic", "threads_content_publish", "threads_keyword_search"
+    }
+    assert params["state"] == ["state"]
 
 
 @pytest.mark.asyncio

@@ -36,7 +36,13 @@ class ThreadsClient:
     def authorization_url(self, state: str) -> str:
         if not self.client_id or not self.client_secret or not self.redirect_uri:
             raise ServiceError("Threads OAuth не настроен: проверьте CLIENT_ID, CLIENT_SECRET и REDIRECT_URI.")
-        return "https://threads.net/oauth/authorize?" + urlencode({"client_id": self.client_id, "redirect_uri": self.redirect_uri, "scope": "threads_basic,threads_content_publish", "response_type": "code", "state": state})
+        return "https://threads.net/oauth/authorize?" + urlencode({
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "scope": "threads_basic,threads_content_publish,threads_keyword_search",
+            "response_type": "code",
+            "state": state,
+        })
 
     async def exchange_code(self, code: str) -> ThreadsToken:
         try:
