@@ -34,6 +34,25 @@ def test_similarity_detects_near_duplicate() -> None:
     assert similarity("Одна полезная мысль про бизнес", "Одна полезная мысль про бизнес!") > .9
 
 
+def test_filter_sources_reports_rejection_reasons() -> None:
+    now = datetime.now(timezone.utc)
+    items = [
+        PublicThread("seen", "Достаточно длинный уже использованный текст", "author", now),
+        PublicThread("short", "коротко", "author", now),
+        PublicThread("own", "Достаточно длинная публикация собственного аккаунта", "owner", now),
+    ]
+    rejected: dict[str, int] = {}
+
+    result = filter_sources(
+        items, cutoff=now - timedelta(hours=1), own_username="owner",
+        seen_ids={"seen"}, seen_hashes=set(), min_length=20,
+        threshold=.82, rejection_counts=rejected,
+    )
+
+    assert result == []
+    assert rejected == {"seen_id": 1, "too_short": 1, "own_account": 1}
+
+
 class FakeGenerator:
     def __init__(self, text: str): self.text = text
     async def generate(self, *_): return GeneratedPost(text=self.text)

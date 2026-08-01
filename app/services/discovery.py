@@ -57,16 +57,31 @@ class PreparedDiscovery:
 
 def filter_sources(items: list[PublicThread], *, cutoff: datetime, own_username: str | None,
                    seen_ids: set[str], seen_hashes: set[str], min_length: int,
-                   threshold: float) -> list[PublicThread]:
+                   threshold: float, rejection_counts: dict[str, int] | None = None) -> list[PublicThread]:
     selected: list[PublicThread] = []
     for item in sorted(items, key=lambda value: value.timestamp, reverse=True):
         text = normalize(item.text)
         stamp = item.timestamp if item.timestamp.tzinfo else item.timestamp.replace(tzinfo=timezone.utc)
-        if (item.id in seen_ids or text_hash(text) in seen_hashes or stamp < cutoff or len(text) < min_length
-                or (own_username and (item.username or "").casefold() == own_username.casefold())
-                or any(marker in text for marker in SPAM)
-                or text.startswith(("repost ", "ответ @", "цитата @"))
-                or any(similarity(text, existing.text) >= threshold for existing in selected)):
+        reason = None
+        if item.id in seen_ids:
+            reason = "seen_id"
+        elif text_hash(text) in seen_hashes:
+            reason = "seen_text"
+        elif stamp < cutoff:
+            reason = "too_old"
+        elif len(text) < min_length:
+            reason = "too_short"
+        elif own_username and (item.username or "").casefold() == own_username.casefold():
+            reason = "own_account"
+        elif any(marker in text for marker in SPAM):
+            reason = "spam"
+        elif text.startswith(("repost ", "ответ @", "цитата @")):
+            reason = "reply_or_repost"
+        elif any(similarity(text, existing.text) >= threshold for existing in selected):
+            reason = "duplicate"
+        if reason:
+            if rejection_counts is not None:
+                rejection_counts[reason] = rejection_counts.get(reason, 0) + 1
             continue
         selected.append(item)
     return selected
@@ -106,11 +121,13 @@ class DiscoveryWorkflow:
         for keyword in self.options.keywords:
             raw.extend(await self.threads.search_recent(keyword, token, self.options.search_limit))
         existing = list(await session.scalars(select(DiscoverySource).where(DiscoverySource.telegram_id == state.telegram_id)))
+        rejection_counts: dict[str, int] = {}
         filtered = filter_sources(raw, cutoff=datetime.now(timezone.utc) - timedelta(hours=self.options.lookback_hours),
                                   own_username=state.threads_username, seen_ids={x.source_id for x in existing},
                                   seen_hashes={x.text_hash for x in existing}, min_length=self.options.min_text_length,
-                                  threshold=self.options.similarity_threshold)
-        logger.info("discovery_sources telegram_id=%s found=%s filtered=%s", state.telegram_id, len(raw), len(filtered))
+                                  threshold=self.options.similarity_threshold, rejection_counts=rejection_counts)
+        logger.info("discovery_sources telegram_id=%s found=%s filtered=%s rejected=%s",
+                    state.telegram_id, len(raw), len(filtered), rejection_counts)
         if len(filtered) < self.options.min_sources:
             logger.info("discovery_skip telegram_id=%s reason=insufficient_sources", state.telegram_id)
             return None
