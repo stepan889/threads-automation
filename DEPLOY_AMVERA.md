@@ -124,6 +124,7 @@ Discovery использует тот же зашифрованный Threads ac
 | `THREADS_BOOTSTRAP_TOKEN` | секрет | long-lived Threads token пользователя |
 | `THREADS_BOOTSTRAP_TELEGRAM_ID` | переменная | Telegram ID владельца из `ADMIN_TELEGRAM_IDS` |
 | `THREADS_BOOTSTRAP_EXPIRES_AT` | переменная | известная дата истечения в ISO 8601, например `2026-09-30T12:00:00+00:00` |
+| `THREADS_BOOTSTRAP_REPLACE_EXISTING` | переменная | `true` только для одноразовой замены уже сохранённого токена |
 
 `THREADS_BOOTSTRAP_EXPIRES_AT` можно не задавать: тогда приложение примет срок 60 дней с момента импорта. Лучше указать реальную дату выпуска/истечения токена, если она известна.
 
@@ -133,6 +134,12 @@ Discovery использует тот же зашифрованный Threads ac
 2. определит ID и username именно этого пользователя;
 3. зашифрует токен ключом `TOKEN_ENCRYPTION_KEY`;
 4. сохранит его в PostgreSQL для указанного Telegram ID.
+
+Для плановой или аварийной ротации существующего токена задайте новый
+`THREADS_BOOTSTRAP_TOKEN` и временно включите `THREADS_BOOTSTRAP_REPLACE_EXISTING=true`.
+Без этого флага bootstrap безопасно пропускает уже подключённого пользователя. После строки
+`Threads bootstrap replaced for @username` удалите все `THREADS_BOOTSTRAP_*` и перезапустите
+приложение ещё раз.
 
 В журнале должна появиться строка `Threads bootstrap completed for @username`. После этого удалите три переменные `THREADS_BOOTSTRAP_*` и перезапустите приложение. При случайном повторном запуске существующее подключение не перезаписывается.
 

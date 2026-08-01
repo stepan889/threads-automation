@@ -89,11 +89,13 @@ class ThreadsClient:
 
     async def search_recent(self, keyword: str, access_token: str, limit: int) -> list[PublicThread]:
         params = {"q": keyword, "search_type": "RECENT", "search_mode": "KEYWORD", "limit": limit,
-                  "fields": "id,text,username,timestamp,permalink,topic_tag", "access_token": access_token}
+                  "fields": "id,text,username,timestamp,permalink,topic_tag"}
+        headers = {"Authorization": f"Bearer {access_token}"}
         response = None
         for attempt in range(3):
             try:
-                response = await self._client.get("https://graph.threads.net/keyword_search", params=params)
+                response = await self._client.get("https://graph.threads.net/keyword_search", params=params,
+                                                  headers=headers)
                 response.raise_for_status()
                 payload = response.json().get("data", [])
                 return [PublicThread(str(row["id"]), str(row.get("text", "")), row.get("username"),

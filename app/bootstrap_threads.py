@@ -17,6 +17,9 @@ from app.services.crypto import TokenCipher
 async def main() -> None:
     settings = get_settings()
     token = os.environ["THREADS_BOOTSTRAP_TOKEN"].strip()
+    replace_existing = os.getenv("THREADS_BOOTSTRAP_REPLACE_EXISTING", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
     if not token:
         raise SystemExit("THREADS_BOOTSTRAP_TOKEN is empty")
 
@@ -34,7 +37,7 @@ async def main() -> None:
         existing = await get_or_create_state(
             session, telegram_id, settings.default_post_interval_minutes
         )
-        if (
+        if (not replace_existing and
             existing.threads_connected
             and existing.threads_user_id
             and existing.threads_access_token
@@ -70,7 +73,8 @@ async def main() -> None:
         state.threads_token_expires_at = expires_at
         await session.commit()
 
-    print(f"Threads bootstrap completed for @{profile.get('username', 'unknown')}")
+    action = "replaced" if replace_existing else "completed"
+    print(f"Threads bootstrap {action} for @{profile.get('username', 'unknown')}")
 
 
 if __name__ == "__main__":

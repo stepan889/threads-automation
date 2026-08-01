@@ -103,6 +103,8 @@ async def test_threads_keyword_search_and_safe_auth_error() -> None:
         assert request.url.path == "/keyword_search"
         assert request.url.params["search_type"] == "RECENT"
         assert request.url.params["search_mode"] == "KEYWORD"
+        assert "access_token" not in request.url.params
+        assert request.headers["Authorization"] == "Bearer token"
         return httpx.Response(200, json={"data": [{"id": "p1", "text": "text", "username": "u",
             "timestamp": "2026-08-01T10:00:00Z", "permalink": "https://example.test/p1", "topic_tag": "AI"}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
