@@ -22,6 +22,7 @@ BBC_FEEDS = {
     "Business": "https://feeds.bbci.co.uk/news/business/rss.xml",
     "Technology": "https://feeds.bbci.co.uk/news/technology/rss.xml",
     "Science": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+    "Sport": "https://feeds.bbci.co.uk/sport/rss.xml",
 }
 _TAGS = re.compile(r"<[^>]+>")
 _SPACE = re.compile(r"\s+")
@@ -119,7 +120,7 @@ class GuardianNewsClient:
             response = await _get_with_retry(self._client, "https://content.guardianapis.com/search", params={
                 "api-key": self.api_key, "from-date": since.date().isoformat(), "order-by": "newest",
                 "page-size": 50, "show-fields": "trailText,standfirst",
-                "q": "AI OR technology OR startup OR business OR science",
+                "q": "AI OR neural network OR technology OR startup OR business OR science OR analytics OR sport",
             })
             return parse_guardian_response(response.json())
         except (httpx.HTTPError, ValueError) as exc:
@@ -134,9 +135,15 @@ class GuardianNewsClient:
 class NewsFilter:
     _aliases = {
         "искусственный интеллект": ("artificial intelligence", " ai ", "machine learning"),
+        "нейросети": ("neural network", "neural model", "generative ai"),
+        "аналитика": ("analytics", "data analysis", "insight"),
+        "спорт": ("sport", "football", "tennis", "basketball", "hockey", "athlete"),
         "технологии": ("technology", "tech"), "интернет-продукты": ("internet", "app", "platform"),
         "стартапы": ("startup",), "бизнес": ("business", "company"),
-        "наука": ("science", "research"), "мировые события": ("world", "global"),
+        "наука": ("science", "research"), "инновации": ("innovation",),
+        "финансы": ("finance", "financial", "market"), "маркетинг": ("marketing", "advertising"),
+        "образование": ("education", "learning"), "продуктивность": ("productivity", "workplace"),
+        "культура": ("culture", "art", "film", "music"), "мировые события": ("world", "global"),
     }
     _safety_english = ("war", "killed", "death", "dead", "terror", "disaster", "shooting", "explosion", "attack")
 
