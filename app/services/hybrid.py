@@ -14,6 +14,14 @@ from app.services.openrouter import OpenRouterPostGenerator
 
 logger = logging.getLogger(__name__)
 
+EMERGENCY_POSTS = (
+    "Иногда лучший способ разобраться в новой теме — попробовать объяснить её простыми словами. А какой навык вы сейчас осваиваете?",
+    "Полезные идеи часто появляются не во время работы, а в короткой паузе. Что помогает вам перезагрузиться и снова собраться?",
+    "Можно долго ждать идеального момента, но небольшой шаг сегодня обычно полезнее большого плана на потом. Что вы давно откладываете?",
+    "Любопытство — хороший повод попробовать что-то новое без ожидания мгновенного результата. Что вам хотелось бы изучить просто ради интереса?",
+    "Иногда один честный вопрос помогает больше, чем десять готовых советов. Какой вопрос вы бы сегодня задали человеку с большим опытом?",
+)
+
 
 @dataclass(frozen=True)
 class GeneratedDraft:
@@ -54,8 +62,24 @@ class HybridPostGenerator:
         prompt = state.topic or "Создай новый пост по актуальной теме профиля."
         if history:
             prompt += "\n\nНе повторяй идеи и формулировки недавних публикаций:\n" + "\n".join(f"- {x[:300]}" for x in history)
-        generated: GeneratedPost = await self.generator.generate(prompt, state.system_prompt)
-        return GeneratedDraft(generated.text)
+        try:
+            generated: GeneratedPost = await self.generator.generate(prompt, state.system_prompt)
+            return GeneratedDraft(generated.text)
+        except EmptyGenerationError:
+            logger.warning("Empty regular generation; retrying with compact prompt and larger token budget")
+        try:
+            generated = await self.generator.generate(
+                "Напиши один короткий живой пост-вопрос для аудитории на русском языке. Без новостей, фактов, ссылок и вступлений.",
+                "Создай естественный самостоятельный текст для Threads. Ответь только готовым постом до 500 символов.",
+                max_completion_tokens=1600,
+                reasoning_effort="low",
+            )
+            return GeneratedDraft(generated.text)
+        except EmptyGenerationError:
+            logger.warning("OpenRouter retry was empty; using local emergency post")
+            recent = {text.strip() for text in history}
+            choices = [text for text in EMERGENCY_POSTS if text not in recent] or list(EMERGENCY_POSTS)
+            return GeneratedDraft(self.rng.choice(choices))
 
     @staticmethod
     def _news_prompt(item: NewsItem, history: list[str]) -> str:

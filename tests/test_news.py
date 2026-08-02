@@ -10,7 +10,7 @@ from app.models import Base, BotState, NewsItem
 from app.config import Settings
 from app.bot.handlers import _generate_preview
 from app.services.errors import EmptyGenerationError, ServiceError
-from app.services.hybrid import HybridPostGenerator
+from app.services.hybrid import EMERGENCY_POSTS, HybridPostGenerator
 from app.services.interfaces import GeneratedPost
 from app.services.news import (BBCNewsClient, GuardianNewsClient, NewsFilter, NewsRecord,
                                NewsService, parse_bbc_rss, parse_guardian_response, stable_hash)
@@ -150,6 +150,34 @@ async def test_empty_news_generation_falls_back_to_regular_post(session_factory,
         assert item.status == "available"
         assert generator.generate.await_count == 2
     assert "source=The Guardian" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_empty_regular_generation_retries_with_larger_budget(session_factory):
+    generator = SimpleNamespace(generate=AsyncMock(side_effect=[
+        EmptyGenerationError("empty"), GeneratedPost(text="пост после повтора")
+    ]))
+    news_service = SimpleNamespace(refresh=AsyncMock(return_value=0))
+    state = BotState(telegram_id=1, interval_minutes=60)
+    async with session_factory() as session:
+        session.add(state); await session.commit()
+        draft = await HybridPostGenerator(generator, news_service, 0, 48, FixedRng()).generate(session, state)
+    assert draft.text == "пост после повтора" and draft.post_type == "regular"
+    retry = generator.generate.await_args_list[1]
+    assert retry.kwargs == {"max_completion_tokens": 1600, "reasoning_effort": "low"}
+
+
+@pytest.mark.asyncio
+async def test_repeated_empty_generation_uses_local_emergency_post(session_factory, caplog):
+    generator = SimpleNamespace(generate=AsyncMock(side_effect=EmptyGenerationError("empty")))
+    news_service = SimpleNamespace(refresh=AsyncMock(return_value=0))
+    state = BotState(telegram_id=1, interval_minutes=60)
+    async with session_factory() as session:
+        session.add(state); await session.commit()
+        draft = await HybridPostGenerator(generator, news_service, 0, 48, FixedRng()).generate(session, state)
+    assert draft.post_type == "regular" and draft.news_item_id is None
+    assert draft.text in EMERGENCY_POSTS
+    assert "using local emergency post" in caplog.text
 
 
 @pytest.mark.asyncio

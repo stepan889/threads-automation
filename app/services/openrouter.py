@@ -37,13 +37,18 @@ class OpenRouterPostGenerator:
         self._client = client or httpx.AsyncClient(timeout=timeout)
         self._owns_client = client is None
 
-    async def generate(self, prompt: str | None = None, system_prompt: str | None = None) -> GeneratedPost:
+    async def generate(self, prompt: str | None = None, system_prompt: str | None = None,
+                       *, max_completion_tokens: int = 600,
+                       reasoning_effort: str | None = None) -> GeneratedPost:
         if not self.api_key or not self.model:
             raise ServiceError("OpenRouter не настроен: задайте OPENROUTER_API_KEY и OPENROUTER_MODEL.")
         messages = [{"role": "system", "content": f"{system_prompt or self.system_prompt}\nОтвет — только готовый завершённый текст, не более {THREADS_TEXT_LIMIT} символов. Обязательно закончи последнее слово и предложение."}]
         messages.append({"role": "user", "content": prompt or "Создай новый пост."})
+        payload = {"model": self.model, "messages": messages, "max_completion_tokens": max_completion_tokens}
+        if reasoning_effort:
+            payload["reasoning"] = {"effort": reasoning_effort, "exclude": True}
         try:
-            response = await self._client.post("https://openrouter.ai/api/v1/chat/completions", headers={"Authorization": f"Bearer {self.api_key}"}, json={"model": self.model, "messages": messages, "max_completion_tokens": 600})
+            response = await self._client.post("https://openrouter.ai/api/v1/chat/completions", headers={"Authorization": f"Bearer {self.api_key}"}, json=payload)
             response.raise_for_status()
             data = response.json()
             content = data["choices"][0]["message"]["content"]

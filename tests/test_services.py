@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+import json
 import pytest
 
 from app.services.errors import ServiceError
@@ -74,6 +75,20 @@ async def test_openrouter_null_content_is_a_safe_service_error() -> None:
     async with httpx.AsyncClient(transport=transport) as client:
         with pytest.raises(ServiceError, match="пустой ответ"):
             await OpenRouterPostGenerator("key", "model", "system", client=client).generate()
+
+
+@pytest.mark.asyncio
+async def test_openrouter_retry_options_are_sent() -> None:
+    captured = {}
+    def handler(request: httpx.Request):
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "Готово"}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await OpenRouterPostGenerator("key", "model", "system", client=client).generate(
+            "short", max_completion_tokens=1600, reasoning_effort="low"
+        )
+    assert captured["max_completion_tokens"] == 1600
+    assert captured["reasoning"] == {"effort": "low", "exclude": True}
 
 
 @pytest.mark.asyncio
