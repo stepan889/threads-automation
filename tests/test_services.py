@@ -105,9 +105,10 @@ async def test_agentapi_retry_options_are_sent() -> None:
         return httpx.Response(200, json={"choices": [{"message": {"content": "Готово"}}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         await AgentApiPostGenerator("key", "model", "system", client=client).generate(
-            "short", max_completion_tokens=1600, reasoning_effort="low"
+            "short", reasoning_effort="low"
         )
-    assert captured["max_tokens"] == 1600
+    assert "max_tokens" not in captured
+    assert "max_completion_tokens" not in captured
     assert captured["reasoning"] == {"effort": "low", "exclude": True}
 
 

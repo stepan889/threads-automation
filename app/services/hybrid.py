@@ -66,12 +66,11 @@ class HybridPostGenerator:
             generated: GeneratedPost = await self.generator.generate(prompt, state.system_prompt)
             return GeneratedDraft(generated.text)
         except EmptyGenerationError:
-            logger.warning("Empty regular generation; retrying with compact prompt and larger token budget")
+            logger.warning("Empty regular generation; retrying with compact prompt and low reasoning effort")
         try:
             generated = await self.generator.generate(
                 "Напиши один короткий живой пост-вопрос для аудитории на русском языке. Без новостей, фактов, ссылок и вступлений.",
                 "Создай естественный самостоятельный текст для Threads. Ответь только готовым постом до 500 символов.",
-                max_completion_tokens=1600,
                 reasoning_effort="low",
             )
             return GeneratedDraft(generated.text)

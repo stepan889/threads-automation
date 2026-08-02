@@ -153,7 +153,7 @@ async def test_empty_news_generation_falls_back_to_regular_post(session_factory,
 
 
 @pytest.mark.asyncio
-async def test_empty_regular_generation_retries_with_larger_budget(session_factory):
+async def test_empty_regular_generation_retries_with_low_reasoning(session_factory):
     generator = SimpleNamespace(generate=AsyncMock(side_effect=[
         EmptyGenerationError("empty"), GeneratedPost(text="пост после повтора")
     ]))
@@ -164,7 +164,7 @@ async def test_empty_regular_generation_retries_with_larger_budget(session_facto
         draft = await HybridPostGenerator(generator, news_service, 0, 48, FixedRng()).generate(session, state)
     assert draft.text == "пост после повтора" and draft.post_type == "regular"
     retry = generator.generate.await_args_list[1]
-    assert retry.kwargs == {"max_completion_tokens": 1600, "reasoning_effort": "low"}
+    assert retry.kwargs == {"reasoning_effort": "low"}
 
 
 @pytest.mark.asyncio

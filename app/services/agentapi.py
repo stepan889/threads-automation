@@ -52,13 +52,12 @@ class AgentApiPostGenerator:
         self._owns_client = client is None
 
     async def generate(self, prompt: str | None = None, system_prompt: str | None = None,
-                       *, max_completion_tokens: int = 600,
-                       reasoning_effort: str | None = None) -> GeneratedPost:
+                       *, reasoning_effort: str | None = None) -> GeneratedPost:
         if not self.api_key or not self.model:
             raise ServiceError("AgentAPI не настроен: задайте AGENTAPI_KEY и AGENTAPI_MODEL.")
         messages = [{"role": "system", "content": f"{system_prompt or self.system_prompt}\nОтвет — только готовый завершённый текст, не более {THREADS_TEXT_LIMIT} символов. Обязательно закончи последнее слово и предложение."}]
         messages.append({"role": "user", "content": prompt or "Создай новый пост."})
-        payload = {"model": self.model, "messages": messages, "max_tokens": max_completion_tokens}
+        payload = {"model": self.model, "messages": messages}
         if reasoning_effort:
             payload["reasoning"] = {"effort": reasoning_effort, "exclude": True}
         try:
