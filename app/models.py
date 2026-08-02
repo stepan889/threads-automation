@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -43,26 +43,3 @@ class Post(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-
-
-class DiscoverySource(Base):
-    __tablename__ = "discovery_sources"
-
-    source_id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    text_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
-    source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
-class DiscoveryRun(Base):
-    __tablename__ = "discovery_runs"
-    __table_args__ = (UniqueConstraint("telegram_id", "content_hash", name="uq_discovery_content"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
-    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False)
-    post_id: Mapped[int | None] = mapped_column(Integer)
-    diagnostic: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

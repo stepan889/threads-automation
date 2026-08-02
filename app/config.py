@@ -25,17 +25,6 @@ class Settings(BaseSettings):
     threads_api_version: str = "v1.0"
     log_level: str = "INFO"
     default_post_interval_minutes: int = Field(default=60, ge=5, le=10080)
-    threads_discovery_enabled: bool = False
-    threads_discovery_keywords: Annotated[tuple[str, ...], NoDecode] = (
-        "искусственный интеллект", "бизнес", "спорт", "аналитика"
-    )
-    threads_discovery_search_limit: int = Field(default=30, ge=1, le=100)
-    threads_discovery_lookback_hours: int = Field(default=24, ge=1, le=168)
-    threads_discovery_min_sources: int = Field(default=5, ge=1, le=100)
-    threads_discovery_max_posts_per_run: int = Field(default=1, ge=0, le=5)
-    threads_discovery_min_text_length: int = Field(default=40, ge=1, le=500)
-    threads_discovery_similarity_threshold: float = Field(default=0.82, ge=0.5, le=1)
-    threads_discovery_blocked_phrases: Annotated[tuple[str, ...], NoDecode] = ()
 
     @field_validator("admin_telegram_ids", mode="before")
     @classmethod
@@ -43,14 +32,6 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return frozenset(int(item.strip()) for item in value.split(",") if item.strip())
         return value
-
-    @field_validator("threads_discovery_keywords", "threads_discovery_blocked_phrases", mode="before")
-    @classmethod
-    def parse_csv(cls, value: object) -> object:
-        if isinstance(value, str):
-            return tuple(item.strip() for item in value.split(",") if item.strip())
-        return value
-
 
 @lru_cache
 def get_settings() -> Settings:

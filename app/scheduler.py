@@ -6,16 +6,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.models import BotState
 from app.repository import running_states
 from app.services.workflow import PublishingWorkflow
-from app.services.discovery import DiscoveryWorkflow
 
 logger = logging.getLogger(__name__)
 
 
 class AutopostScheduler:
-    def __init__(self, sessions: async_sessionmaker, workflow: PublishingWorkflow,
-                 discovery: DiscoveryWorkflow | None = None) -> None:
+    def __init__(self, sessions: async_sessionmaker, workflow: PublishingWorkflow) -> None:
         self.sessions, self.workflow = sessions, workflow
-        self.discovery = discovery
         self.scheduler = AsyncIOScheduler(timezone="UTC", job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 300})
 
     async def start(self) -> None:
@@ -39,10 +36,7 @@ class AutopostScheduler:
                 self.stop(telegram_id)
                 return
             try:
-                if self.discovery is not None:
-                    await self.discovery.run(session, state)
-                else:
-                    await self.workflow.run(session, state)
+                await self.workflow.run(session, state)
             except Exception:
                 await session.rollback()
                 logger.exception("Autopost job failed for telegram_id=%s", telegram_id)

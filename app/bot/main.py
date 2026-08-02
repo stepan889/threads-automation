@@ -13,7 +13,6 @@ from app.services.oauth_state import OAuthStateCodec
 from app.services.openrouter import OpenRouterPostGenerator
 from app.services.threads import ThreadsClient
 from app.services.workflow import PublishingWorkflow
-from app.services.discovery import DiscoveryOptions, DiscoveryWorkflow
 
 
 async def main() -> None:
@@ -25,19 +24,7 @@ async def main() -> None:
     cipher = TokenCipher(settings.token_encryption_key)
     oauth_state = OAuthStateCodec(settings.threads_client_secret, settings.oauth_state_ttl_seconds)
     workflow = PublishingWorkflow(generator, threads, cipher)
-    discovery = None
-    if settings.threads_discovery_enabled:
-        discovery = DiscoveryWorkflow(generator, threads, cipher, workflow, DiscoveryOptions(
-            keywords=settings.threads_discovery_keywords,
-            search_limit=settings.threads_discovery_search_limit,
-            lookback_hours=settings.threads_discovery_lookback_hours,
-            min_sources=settings.threads_discovery_min_sources,
-            max_posts_per_run=settings.threads_discovery_max_posts_per_run,
-            min_text_length=settings.threads_discovery_min_text_length,
-            similarity_threshold=settings.threads_discovery_similarity_threshold,
-            blocked_phrases=settings.threads_discovery_blocked_phrases,
-        ))
-    autopost = AutopostScheduler(SessionFactory, workflow, discovery)
+    autopost = AutopostScheduler(SessionFactory, workflow)
     await autopost.start()
     dispatcher = Dispatcher()
     dispatcher.update.outer_middleware(DatabaseSessionMiddleware(SessionFactory))
@@ -45,8 +32,8 @@ async def main() -> None:
     dispatcher.callback_query.middleware(AdminOnlyMiddleware(settings.admin_telegram_ids))
     dispatcher.include_router(router)
     try:
-        await dispatcher.start_polling(bot, settings=settings, workflow=workflow, discovery=discovery,
-                                       threads=threads, oauth_state=oauth_state, autopost=autopost)
+        await dispatcher.start_polling(bot, settings=settings, workflow=workflow, threads=threads,
+                                       oauth_state=oauth_state, autopost=autopost)
     finally:
         autopost.shutdown()
         await generator.close(); await threads.close(); await bot.session.close()

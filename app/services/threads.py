@@ -9,16 +9,6 @@ from app.services.interfaces import PublishResult
 
 
 @dataclass(frozen=True)
-class PublicThread:
-    id: str
-    text: str
-    username: str | None
-    timestamp: datetime
-    permalink: str | None = None
-    topic_tag: str | None = None
-
-
-@dataclass(frozen=True)
 class ThreadsToken:
     access_token: str
     user_id: str
@@ -39,7 +29,7 @@ class ThreadsClient:
         return "https://threads.net/oauth/authorize?" + urlencode({
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
-            "scope": "threads_basic,threads_content_publish,threads_keyword_search",
+            "scope": "threads_basic,threads_content_publish",
             "response_type": "code",
             "state": state,
         })
@@ -92,35 +82,6 @@ class ThreadsClient:
         except (KeyError, TypeError, ValueError) as exc:
             raise ServiceError("Threads API вернул некорректный ответ.") from exc
         return PublishResult(external_id=external_id)
-
-    async def search_recent(self, keyword: str, access_token: str, limit: int) -> list[PublicThread]:
-        params = {"q": keyword, "search_type": "RECENT", "search_mode": "KEYWORD", "limit": limit,
-                  "fields": "id,text,username,timestamp,permalink,topic_tag"}
-        headers = {"Authorization": f"Bearer {access_token}"}
-        response = None
-        for attempt in range(3):
-            try:
-                response = await self._client.get("https://graph.threads.net/keyword_search", params=params,
-                                                  headers=headers)
-                response.raise_for_status()
-                payload = response.json().get("data", [])
-                return [PublicThread(str(row["id"]), str(row.get("text", "")), row.get("username"),
-                         datetime.fromisoformat(str(row["timestamp"]).replace("Z", "+00:00")),
-                         row.get("permalink"), row.get("topic_tag")) for row in payload]
-            except httpx.TimeoutException as exc:
-                if attempt == 2:
-                    raise ServiceError("Threads search превысил таймаут.") from exc
-            except httpx.HTTPStatusError as exc:
-                status = exc.response.status_code
-                if status in (401, 403):
-                    raise ServiceError(f"Threads search: ошибка авторизации HTTP {status}.") from exc
-                if status not in (429, 500, 502, 503, 504) or attempt == 2:
-                    raise ServiceError(f"Threads search вернул ошибку HTTP {status}.") from exc
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ServiceError("Threads search вернул некорректный ответ.") from exc
-            import asyncio
-            await asyncio.sleep(0.25 * (2 ** attempt))
-        return []
 
     async def close(self) -> None:
         if self._owns_client:

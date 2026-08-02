@@ -9,12 +9,10 @@ from app.services.openrouter import OpenRouterPostGenerator, THREADS_TEXT_LIMIT
 from app.services.threads import ThreadsClient
 
 
-def test_threads_authorization_url_requests_keyword_search() -> None:
+def test_threads_authorization_url_requests_required_permissions() -> None:
     url = ThreadsClient("id", "secret", "https://example.test/cb").authorization_url("state")
     params = parse_qs(urlparse(url).query)
-    assert set(params["scope"][0].split(",")) == {
-        "threads_basic", "threads_content_publish", "threads_keyword_search"
-    }
+    assert set(params["scope"][0].split(",")) == {"threads_basic", "threads_content_publish"}
     assert params["state"] == ["state"]
 
 
@@ -102,25 +100,3 @@ async def test_threads_exchange_and_refresh() -> None:
         refreshed, expiry = await threads.refresh("long")
     assert (token.access_token, token.user_id, refreshed) == ("long", "u", "new")
     assert expiry > datetime.now(timezone.utc) + timedelta(seconds=150)
-
-
-@pytest.mark.asyncio
-async def test_threads_keyword_search_and_safe_auth_error() -> None:
-    calls = 0
-    def handler(request: httpx.Request):
-        nonlocal calls
-        calls += 1
-        assert request.url.path == "/keyword_search"
-        assert request.url.params["search_type"] == "RECENT"
-        assert request.url.params["search_mode"] == "KEYWORD"
-        assert "access_token" not in request.url.params
-        assert request.headers["Authorization"] == "Bearer token"
-        return httpx.Response(200, json={"data": [{"id": "p1", "text": "text", "username": "u",
-            "timestamp": "2026-08-01T10:00:00Z", "permalink": "https://example.test/p1", "topic_tag": "AI"}]})
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        found = await ThreadsClient("id", "secret", "uri", client=client).search_recent("ии", "token", 10)
-    assert calls == 1 and found[0].id == "p1"
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(401))) as client:
-        with pytest.raises(ServiceError, match="авторизации HTTP 401"):
-            await ThreadsClient("id", "secret", "uri", client=client).search_recent("ии", "secret-token", 10)
