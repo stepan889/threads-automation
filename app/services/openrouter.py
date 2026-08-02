@@ -46,7 +46,10 @@ class OpenRouterPostGenerator:
             response = await self._client.post("https://openrouter.ai/api/v1/chat/completions", headers={"Authorization": f"Bearer {self.api_key}"}, json={"model": self.model, "messages": messages, "max_completion_tokens": 600})
             response.raise_for_status()
             data = response.json()
-            text = data["choices"][0]["message"]["content"].strip()
+            content = data["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                raise ServiceError("OpenRouter вернул пустой ответ без текста поста. Попробуйте ещё раз; если ошибка повторяется, проверьте выбранную модель.")
+            text = content.strip()
             finish_reason = data["choices"][0].get("finish_reason")
         except httpx.TimeoutException as exc:
             raise ServiceError("OpenRouter не ответил вовремя. Попробуйте ещё раз.") from exc

@@ -69,6 +69,14 @@ async def test_openrouter_empty_response() -> None:
 
 
 @pytest.mark.asyncio
+async def test_openrouter_null_content_is_a_safe_service_error() -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"choices": [{"message": {"content": None}}]}))
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(ServiceError, match="пустой ответ"):
+            await OpenRouterPostGenerator("key", "model", "system", client=client).generate()
+
+
+@pytest.mark.asyncio
 async def test_threads_publish_two_steps() -> None:
     paths = []
     def handler(request: httpx.Request):
