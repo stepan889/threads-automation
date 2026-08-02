@@ -10,6 +10,7 @@
 - Fernet-шифрование токенов в PostgreSQL;
 - восстановление активных расписаний после рестарта, coalescing и один экземпляр job;
 - история `published`/`failed`, безопасная диагностика и внешний ID;
+- гибридная генерация: свежие BBC/Guardian новости как повод для обсуждения и обычные авторские посты;
 - `/health` (процесс) и `/ready` (PostgreSQL).
 
 ## Настройка
@@ -19,6 +20,18 @@
 3. Сгенерируйте `TOKEN_ENCRYPTION_KEY` один раз командой из `.env.example`. Не меняйте ключ, пока в БД есть подключения: старые токены перестанут расшифровываться.
 4. Нужен публичный HTTPS-адрес API (например, домен или HTTPS-туннель на порт 8000). Укажите точный URI вида `https://bot.example.com/oauth/threads/callback` в `THREADS_REDIRECT_URI`.
 5. В Meta for Developers создайте приложение с Threads API, добавьте Threads use case, настройте Threads App ID/Secret и OAuth Redirect URL **в точности** равный `THREADS_REDIRECT_URI`. Добавьте тестового Threads-пользователя до публикации приложения либо пройдите App Review. Боту нужны permissions `threads_basic` и `threads_content_publish`.
+
+### Новостной режим и Amvera
+
+Добавьте переменные в окружение приложения Amvera:
+
+- `GUARDIAN_API_KEY` — ключ Guardian Open Platform; единственный секрет в этой группе. Без него остаётся BBC RSS;
+- `NEWS_POST_PERCENT=30` — вероятность новостного поста, от 0 до 100; `0` полностью отключает режим;
+- `NEWS_LOOKBACK_HOURS=48` — максимальный возраст подходящей новости;
+- `NEWS_TOPICS` — разрешённые темы через запятую;
+- `NEWS_BLOCKED_PHRASES` — исключаемые фразы через запятую.
+
+Две новостные публикации подряд запрещены. Если источники недоступны или подходящих материалов нет, автоматически создаётся обычный пост. Ссылка и источник показываются отдельно в ручном предпросмотре, но в Threads не публикуются. Новость считается использованной только после подтверждённой успешной публикации.
 
 Ссылка кнопки «Подключить Threads» ведёт на `https://threads.net/oauth/authorize`. Callback меняет authorization code на short-lived token, затем на long-lived token, получает `/me` и сохраняет токен зашифрованным. Публикация выполняет два официальных шага: `/{threads-user-id}/threads` с `media_type=TEXT`, затем `/{threads-user-id}/threads_publish`.
 

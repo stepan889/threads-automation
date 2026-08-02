@@ -2,10 +2,11 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import BotState, Post
+from app.models import BotState, NewsItem, Post
 from app.services.crypto import TokenCipher
 from app.services.errors import ServiceError
 from app.services.openrouter import OpenRouterPostGenerator
+from app.services.hybrid import GeneratedDraft, HybridPostGenerator
 from app.services.threads import ThreadsClient
 
 
@@ -16,15 +17,21 @@ def _aware(value: datetime | None) -> datetime | None:
 
 
 class PublishingWorkflow:
-    def __init__(self, generator: OpenRouterPostGenerator, threads: ThreadsClient, cipher: TokenCipher) -> None:
-        self.generator, self.threads, self.cipher = generator, threads, cipher
+    def __init__(self, generator: OpenRouterPostGenerator, threads: ThreadsClient, cipher: TokenCipher,
+                 hybrid: HybridPostGenerator | None = None) -> None:
+        self.generator, self.threads, self.cipher, self.hybrid = generator, threads, cipher, hybrid
 
-    async def generate(self, state: BotState):
+    async def generate(self, state: BotState, session: AsyncSession | None = None) -> GeneratedDraft:
+        if self.hybrid is not None and session is not None:
+            return await self.hybrid.generate(session, state)
         prompt = state.topic or "Создай новый пост по актуальной теме профиля."
-        return await self.generator.generate(prompt, state.system_prompt)
+        generated = await self.generator.generate(prompt, state.system_prompt)
+        return GeneratedDraft(generated.text)
 
-    async def publish_text(self, session: AsyncSession, state: BotState, text: str) -> Post:
-        post = Post(telegram_id=state.telegram_id, content=text, status="publishing")
+    async def publish_text(self, session: AsyncSession, state: BotState, text: str,
+                           post_type: str = "regular", news_item_id: int | None = None) -> Post:
+        post = Post(telegram_id=state.telegram_id, content=text, status="publishing",
+                    post_type=post_type, news_item_id=news_item_id)
         session.add(post)
         await session.commit()
         try:
@@ -40,6 +47,10 @@ class PublishingWorkflow:
                 state.threads_token_expires_at = expires
             result = await self.threads.publish(state.threads_user_id, token, text)
             post.status, post.external_id, post.published_at = "published", result.external_id, datetime.now(timezone.utc)
+            if news_item_id is not None:
+                news_item = await session.get(NewsItem, news_item_id, with_for_update=True)
+                if news_item is not None:
+                    news_item.status, news_item.used_at = "used", post.published_at
         except ServiceError as exc:
             post.status, post.diagnostic = "failed", str(exc)[:1000]
         await session.commit()
@@ -47,10 +58,10 @@ class PublishingWorkflow:
 
     async def run(self, session: AsyncSession, state: BotState) -> Post:
         try:
-            generated = await self.generate(state)
+            generated = await self.generate(state, session)
         except ServiceError as exc:
             post = Post(telegram_id=state.telegram_id, content="", status="failed", diagnostic=str(exc)[:1000])
             session.add(post)
             await session.commit()
             return post
-        return await self.publish_text(session, state, generated.text)
+        return await self.publish_text(session, state, generated.text, generated.post_type, generated.news_item_id)

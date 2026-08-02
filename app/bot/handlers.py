@@ -67,10 +67,15 @@ async def _generate_preview(callback: CallbackQuery, session: AsyncSession, sett
     state = await _state(session, callback.from_user.id, settings)
     status_message = await callback.message.answer("⏳ Генерирую пост…")  # type: ignore[union-attr]
     try:
-        generated = await workflow.generate(state)
-        await fsm.update_data(draft=generated.text)
+        generated = await workflow.generate(state, session)
+        await fsm.update_data(draft=generated.text, post_type=generated.post_type,
+                              news_item_id=generated.news_item_id)
         text = generated.text
-        await status_message.edit_text(f"Предпросмотр:\n\n{escape(text)}", reply_markup=preview_menu(), parse_mode="HTML")
+        kind = "Новостной пост" if generated.post_type == "news" else "Обычный пост"
+        provenance = ""
+        if generated.post_type == "news":
+            provenance = f'\n\nИсточник: {escape(generated.news_source or "")}, <a href="{escape(generated.news_url or "", quote=True)}">открыть новость</a>'
+        await status_message.edit_text(f"Тип: <b>{kind}</b>\n\n{escape(text)}{provenance}", reply_markup=preview_menu(), parse_mode="HTML")
     except ServiceError as exc:
         await status_message.edit_text(f"Не удалось сгенерировать пост: {escape(str(exc))}", parse_mode="HTML")
 
@@ -97,7 +102,7 @@ async def publish_draft(callback: CallbackQuery, session: AsyncSession, settings
     await callback.answer()
     await callback.message.edit_text("⏳ Публикую в Threads…")  # type: ignore[union-attr]
     bot_state = await _state(session, callback.from_user.id, settings)
-    post = await workflow.publish_text(session, bot_state, draft)
+    post = await workflow.publish_text(session, bot_state, draft, data.get("post_type", "regular"), data.get("news_item_id"))
     await state.clear()
     if post is None:
         await callback.message.edit_text("ℹ️ Этот материал уже был опубликован. Повтор пропущен.")  # type: ignore[union-attr]

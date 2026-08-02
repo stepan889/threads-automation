@@ -13,6 +13,8 @@ from app.services.oauth_state import OAuthStateCodec
 from app.services.openrouter import OpenRouterPostGenerator
 from app.services.threads import ThreadsClient
 from app.services.workflow import PublishingWorkflow
+from app.services.news import BBCNewsClient, GuardianNewsClient, NewsFilter, NewsService
+from app.services.hybrid import HybridPostGenerator
 
 
 async def main() -> None:
@@ -23,7 +25,11 @@ async def main() -> None:
     threads = ThreadsClient(settings.threads_client_id, settings.threads_client_secret, settings.threads_redirect_uri, settings.threads_api_version)
     cipher = TokenCipher(settings.token_encryption_key)
     oauth_state = OAuthStateCodec(settings.threads_client_secret, settings.oauth_state_ttl_seconds)
-    workflow = PublishingWorkflow(generator, threads, cipher)
+    news = NewsService(BBCNewsClient(), GuardianNewsClient(settings.guardian_api_key), NewsFilter(
+        settings.news_topics, settings.news_blocked_phrases, settings.news_lookback_hours
+    ))
+    hybrid = HybridPostGenerator(generator, news, settings.news_post_percent, settings.news_lookback_hours)
+    workflow = PublishingWorkflow(generator, threads, cipher, hybrid)
     autopost = AutopostScheduler(SessionFactory, workflow)
     await autopost.start()
     dispatcher = Dispatcher()
@@ -36,7 +42,7 @@ async def main() -> None:
                                        oauth_state=oauth_state, autopost=autopost)
     finally:
         autopost.shutdown()
-        await generator.close(); await threads.close(); await bot.session.close()
+        await generator.close(); await news.close(); await threads.close(); await bot.session.close()
 
 
 if __name__ == "__main__":

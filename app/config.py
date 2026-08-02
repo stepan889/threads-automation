@@ -25,12 +25,28 @@ class Settings(BaseSettings):
     threads_api_version: str = "v1.0"
     log_level: str = "INFO"
     default_post_interval_minutes: int = Field(default=60, ge=5, le=10080)
+    guardian_api_key: str = ""
+    news_post_percent: int = Field(default=30, ge=0, le=100)
+    news_lookback_hours: int = Field(default=48, ge=1, le=720)
+    news_topics: Annotated[tuple[str, ...], NoDecode] = (
+        "искусственный интеллект", "технологии", "стартапы", "бизнес", "наука"
+    )
+    news_blocked_phrases: Annotated[tuple[str, ...], NoDecode] = (
+        "погиб", "убит", "теракт", "катастрофа", "война"
+    )
 
     @field_validator("admin_telegram_ids", mode="before")
     @classmethod
     def parse_admin_ids(cls, value: object) -> object:
         if isinstance(value, str):
             return frozenset(int(item.strip()) for item in value.split(",") if item.strip())
+        return value
+
+    @field_validator("news_topics", "news_blocked_phrases", mode="before")
+    @classmethod
+    def parse_csv(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(item.strip().lower() for item in value.split(",") if item.strip())
         return value
 
 @lru_cache
