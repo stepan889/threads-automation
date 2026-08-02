@@ -65,6 +65,14 @@ async def test_agentapi_http_error_includes_safe_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agentapi_http_error_includes_validation_detail() -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(400, json={"detail": [{"message": "Unknown model"}]}))
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(ServiceError, match="HTTP 400: Unknown model"):
+            await AgentApiPostGenerator("key", "model", "system", client=client).generate()
+
+
+@pytest.mark.asyncio
 async def test_agentapi_timeout() -> None:
     def timeout(request):
         raise httpx.ReadTimeout("timeout", request=request)

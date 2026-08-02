@@ -6,6 +6,20 @@ from app.services.interfaces import GeneratedPost
 THREADS_TEXT_LIMIT = 500
 
 
+def _extract_error_detail(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("message", "detail", "error"):
+            detail = _extract_error_detail(value.get(key))
+            if detail:
+                return detail
+    if isinstance(value, list):
+        details = [_extract_error_detail(item) for item in value[:3]]
+        return "; ".join(detail for detail in details if detail)
+    return ""
+
+
 def _truncate_at_word_boundary(text: str, limit: int) -> str:
     """Fit text into the limit without leaving a partial final word."""
     text = text.strip()
@@ -61,12 +75,11 @@ class AgentApiPostGenerator:
         except httpx.HTTPStatusError as exc:
             detail = ""
             try:
-                error_data = exc.response.json()
-                raw_detail = error_data.get("message") or error_data.get("error", {}).get("message")
-                if isinstance(raw_detail, str) and raw_detail.strip():
-                    detail = f": {raw_detail.strip()[:300]}"
-            except (ValueError, TypeError, AttributeError):
-                pass
+                detail = _extract_error_detail(exc.response.json())
+            except ValueError:
+                detail = exc.response.text.strip()
+            if detail:
+                detail = f": {detail[:300]}"
             raise ServiceError(f"AgentAPI вернул ошибку HTTP {exc.response.status_code}{detail}.") from exc
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise ServiceError("AgentAPI вернул некорректный или пустой ответ.") from exc
