@@ -13,7 +13,7 @@
 
 - `TELEGRAM_BOT_TOKEN`;
 - `ADMIN_TELEGRAM_IDS` — числовой Telegram ID владельца;
-- `OPENROUTER_API_KEY` и точный `OPENROUTER_MODEL`;
+- `AGENTAPI_KEY` и точный `AGENTAPI_MODEL`;
 - long-lived Threads access token отдельного пользователя;
 - `TOKEN_ENCRYPTION_KEY` из текущего `.env`;
 - `THREADS_CLIENT_ID` и `THREADS_CLIENT_SECRET`, если они уже используются.
@@ -83,9 +83,9 @@ git check-ignore .env
 | `TELEGRAM_BOT_TOKEN` | секрет | токен BotFather |
 | `ADMIN_TELEGRAM_IDS` | переменная | один Telegram ID; несколько — через запятую |
 | `DATABASE_URL` | секрет | строка `postgresql+asyncpg://...` из шага 2 |
-| `OPENROUTER_API_KEY` | секрет | ключ OpenRouter |
-| `OPENROUTER_MODEL` | переменная | точный slug модели |
-| `OPENROUTER_TIMEOUT_SECONDS` | переменная | `30` |
+| `AGENTAPI_KEY` | секрет | ключ AgentAPI (`agentapi-*`) |
+| `AGENTAPI_MODEL` | переменная | точный slug модели из каталога AgentAPI |
+| `AGENTAPI_TIMEOUT_SECONDS` | переменная | `30` |
 | `DEFAULT_SYSTEM_PROMPT` | переменная | системный промпт |
 | `THREADS_CLIENT_ID` | переменная/секрет | ID приложения Meta |
 | `THREADS_CLIENT_SECRET` | секрет | секрет приложения Meta; также подписывает OAuth state |

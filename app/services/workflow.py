@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import BotState, NewsItem, Post
 from app.services.crypto import TokenCipher
 from app.services.errors import ServiceError
-from app.services.openrouter import OpenRouterPostGenerator
+from app.services.agentapi import AgentApiPostGenerator
 from app.services.hybrid import GeneratedDraft, HybridPostGenerator
 from app.services.threads import ThreadsClient
 
@@ -17,7 +17,7 @@ def _aware(value: datetime | None) -> datetime | None:
 
 
 class PublishingWorkflow:
-    def __init__(self, generator: OpenRouterPostGenerator, threads: ThreadsClient, cipher: TokenCipher,
+    def __init__(self, generator: AgentApiPostGenerator, threads: ThreadsClient, cipher: TokenCipher,
                  hybrid: HybridPostGenerator | None = None) -> None:
         self.generator, self.threads, self.cipher, self.hybrid = generator, threads, cipher, hybrid
 

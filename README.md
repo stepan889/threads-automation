@@ -1,6 +1,6 @@
-# Telegram-бот для OpenRouter → Threads
+# Telegram-бот для AgentAPI → Threads
 
-Рабочая асинхронная панель: OpenRouter генерирует текст, Telegram показывает предпросмотр, официальный Threads Graph API публикует его вручную или по расписанию. Доступ ограничен `ADMIN_TELEGRAM_IDS`.
+Рабочая асинхронная панель: AgentAPI генерирует текст, Telegram показывает предпросмотр, официальный Threads Graph API публикует его вручную или по расписанию. Доступ ограничен `ADMIN_TELEGRAM_IDS`.
 
 ## Возможности
 
@@ -16,7 +16,7 @@
 ## Настройка
 
 1. Скопируйте `.env.example` в `.env`. Укажите Telegram-токен, разрешённые числовые ID, пароль PostgreSQL и совпадающий пароль в `DATABASE_URL`.
-2. Создайте OpenRouter API key и задайте точный slug модели в `OPENROUTER_MODEL`. Код использует `POST /api/v1/chat/completions` с Bearer-аутентификацией.
+2. Создайте ключ AgentAPI и задайте точный slug модели из каталога в `AGENTAPI_MODEL`. Код использует `POST https://api.agentapi.ru/v1/ai/chat/completions` с Bearer-аутентификацией.
 3. Сгенерируйте `TOKEN_ENCRYPTION_KEY` один раз командой из `.env.example`. Не меняйте ключ, пока в БД есть подключения: старые токены перестанут расшифровываться.
 4. Нужен публичный HTTPS-адрес API (например, домен или HTTPS-туннель на порт 8000). Укажите точный URI вида `https://bot.example.com/oauth/threads/callback` в `THREADS_REDIRECT_URI`.
 5. В Meta for Developers создайте приложение с Threads API, добавьте Threads use case, настройте Threads App ID/Secret и OAuth Redirect URL **в точности** равный `THREADS_REDIRECT_URI`. Добавьте тестового Threads-пользователя до публикации приложения либо пройдите App Review. Боту нужны permissions `threads_basic` и `threads_content_publish`.
@@ -35,7 +35,7 @@
 
 Ссылка кнопки «Подключить Threads» ведёт на `https://threads.net/oauth/authorize`. Callback меняет authorization code на short-lived token, затем на long-lived token, получает `/me` и сохраняет токен зашифрованным. Публикация выполняет два официальных шага: `/{threads-user-id}/threads` с `media_type=TEXT`, затем `/{threads-user-id}/threads_publish`.
 
-Официальная документация: [OpenRouter Chat Completions](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request), [OpenRouter errors](https://openrouter.ai/docs/api/reference/errors-and-debugging), [Threads access tokens and permissions](https://developers.facebook.com/docs/threads/get-started/get-access-tokens-and-permissions), [Threads publishing](https://developers.facebook.com/docs/threads/posts), [Threads API getting started](https://developers.facebook.com/docs/threads/get-started/).
+Официальная документация: [AgentAPI](https://agentapi.ru/docs), [Threads access tokens and permissions](https://developers.facebook.com/docs/threads/get-started/get-access-tokens-and-permissions), [Threads publishing](https://developers.facebook.com/docs/threads/posts), [Threads API getting started](https://developers.facebook.com/docs/threads/get-started/).
 
 ## Запуск
 
@@ -64,7 +64,7 @@ pip install -e '.[dev]'
 pytest -q
 ```
 
-Сетевые unit-тесты используют `httpx.MockTransport` и не обращаются к OpenRouter или Meta. Реальный OAuth невозможно завершить без настроенного приложения, публичного HTTPS callback и ручного входа владельца Threads.
+Сетевые unit-тесты используют `httpx.MockTransport` и не обращаются к AgentAPI или Meta. Реальный OAuth невозможно завершить без настроенного приложения, публичного HTTPS callback и ручного входа владельца Threads.
 
 ## Эксплуатационные замечания
 

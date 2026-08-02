@@ -10,7 +10,7 @@ from app.repository import available_news, last_published_post, recent_posts
 from app.services.interfaces import GeneratedPost
 from app.services.errors import EmptyGenerationError
 from app.services.news import NewsService
-from app.services.openrouter import OpenRouterPostGenerator
+from app.services.agentapi import AgentApiPostGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class GeneratedDraft:
 
 
 class HybridPostGenerator:
-    def __init__(self, generator: OpenRouterPostGenerator, news: NewsService, news_percent: int, lookback_hours: int, rng=None) -> None:
+    def __init__(self, generator: AgentApiPostGenerator, news: NewsService, news_percent: int, lookback_hours: int, rng=None) -> None:
         self.generator, self.news = generator, news
         self.news_percent, self.lookback_hours = news_percent, lookback_hours
         self.rng = rng or random.SystemRandom()
@@ -76,7 +76,7 @@ class HybridPostGenerator:
             )
             return GeneratedDraft(generated.text)
         except EmptyGenerationError:
-            logger.warning("OpenRouter retry was empty; using local emergency post")
+            logger.warning("AgentAPI retry was empty; using local emergency post")
             recent = {text.strip() for text in history}
             choices = [text for text in EMERGENCY_POSTS if text not in recent] or list(EMERGENCY_POSTS)
             return GeneratedDraft(self.rng.choice(choices))

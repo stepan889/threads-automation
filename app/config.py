@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = Field(min_length=1)
     admin_telegram_ids: Annotated[frozenset[int], NoDecode]
     database_url: str = Field(min_length=1)
-    openrouter_api_key: str = ""
-    openrouter_model: str = ""
-    openrouter_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    agentapi_key: str = ""
+    agentapi_model: str = ""
+    agentapi_timeout_seconds: float = Field(default=30, gt=0, le=120)
     default_system_prompt: str = "Создай полезный, естественный пост для Threads на русском языке. Без выдуманных фактов."
     threads_client_id: str = ""
     threads_client_secret: str = ""

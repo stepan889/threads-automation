@@ -6,7 +6,7 @@ import json
 import pytest
 
 from app.services.errors import ServiceError
-from app.services.openrouter import OpenRouterPostGenerator, THREADS_TEXT_LIMIT
+from app.services.agentapi import AgentApiPostGenerator, THREADS_TEXT_LIMIT
 from app.services.threads import ThreadsClient
 
 
@@ -18,73 +18,77 @@ def test_threads_authorization_url_requests_required_permissions() -> None:
 
 
 @pytest.mark.asyncio
-async def test_openrouter_success() -> None:
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"choices": [{"message": {"content": " Готовый пост "}}]}))
+async def test_agentapi_success() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://api.agentapi.ru/v1/ai/chat/completions"
+        assert request.headers["Authorization"] == "Bearer key"
+        return httpx.Response(200, json={"choices": [{"message": {"content": " Готовый пост "}}]})
+    transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport) as client:
-        result = await OpenRouterPostGenerator("key", "model", "system", client=client).generate("topic")
+        result = await AgentApiPostGenerator("key", "model", "system", client=client).generate("topic")
     assert result.text == "Готовый пост"
 
 
 @pytest.mark.asyncio
-async def test_openrouter_truncates_at_word_boundary() -> None:
+async def test_agentapi_truncates_at_word_boundary() -> None:
     content = "слово " * 100
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"choices": [{"message": {"content": content}, "finish_reason": "stop"}]}))
     async with httpx.AsyncClient(transport=transport) as client:
-        result = await OpenRouterPostGenerator("key", "model", "system", client=client).generate()
+        result = await AgentApiPostGenerator("key", "model", "system", client=client).generate()
     assert len(result.text) <= THREADS_TEXT_LIMIT
     assert result.text.endswith("слово")
 
 
 @pytest.mark.asyncio
-async def test_openrouter_removes_word_cut_by_token_limit() -> None:
+async def test_agentapi_removes_word_cut_by_token_limit() -> None:
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"choices": [{"message": {"content": "А вы используете ИИ в повседневных зад"}, "finish_reason": "length"}]}))
     async with httpx.AsyncClient(transport=transport) as client:
-        result = await OpenRouterPostGenerator("key", "model", "system", client=client).generate()
+        result = await AgentApiPostGenerator("key", "model", "system", client=client).generate()
     assert result.text == "А вы используете ИИ в повседневных"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 429, 503])
-async def test_openrouter_http_errors_are_safe(status: int) -> None:
+async def test_agentapi_http_errors_are_safe(status: int) -> None:
     transport = httpx.MockTransport(lambda request: httpx.Response(status, json={"error": {"message": "secret upstream detail"}}))
     async with httpx.AsyncClient(transport=transport) as client:
         with pytest.raises(ServiceError, match=f"HTTP {status}"):
-            await OpenRouterPostGenerator("key", "model", "system", client=client).generate()
+            await AgentApiPostGenerator("key", "model", "system", client=client).generate()
 
 
 @pytest.mark.asyncio
-async def test_openrouter_timeout() -> None:
+async def test_agentapi_timeout() -> None:
     def timeout(request):
         raise httpx.ReadTimeout("timeout", request=request)
     async with httpx.AsyncClient(transport=httpx.MockTransport(timeout)) as client:
         with pytest.raises(ServiceError, match="вовремя"):
-            await OpenRouterPostGenerator("key", "model", "system", client=client).generate()
+            await AgentApiPostGenerator("key", "model", "system", client=client).generate()
 
 
 @pytest.mark.asyncio
-async def test_openrouter_empty_response() -> None:
+async def test_agentapi_empty_response() -> None:
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"choices": [{"message": {"content": ""}}]}))
     async with httpx.AsyncClient(transport=transport) as client:
         with pytest.raises(ServiceError, match="пустой"):
-            await OpenRouterPostGenerator("key", "model", "system", client=client).generate()
+            await AgentApiPostGenerator("key", "model", "system", client=client).generate()
 
 
 @pytest.mark.asyncio
-async def test_openrouter_null_content_is_a_safe_service_error() -> None:
+async def test_agentapi_null_content_is_a_safe_service_error() -> None:
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"choices": [{"message": {"content": None}}]}))
     async with httpx.AsyncClient(transport=transport) as client:
         with pytest.raises(ServiceError, match="пустой ответ"):
-            await OpenRouterPostGenerator("key", "model", "system", client=client).generate()
+            await AgentApiPostGenerator("key", "model", "system", client=client).generate()
 
 
 @pytest.mark.asyncio
-async def test_openrouter_retry_options_are_sent() -> None:
+async def test_agentapi_retry_options_are_sent() -> None:
     captured = {}
     def handler(request: httpx.Request):
         captured.update(json.loads(request.content))
         return httpx.Response(200, json={"choices": [{"message": {"content": "Готово"}}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        await OpenRouterPostGenerator("key", "model", "system", client=client).generate(
+        await AgentApiPostGenerator("key", "model", "system", client=client).generate(
             "short", max_completion_tokens=1600, reasoning_effort="low"
         )
     assert captured["max_completion_tokens"] == 1600

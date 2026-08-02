@@ -10,11 +10,11 @@ def test_admin_ids_are_parsed() -> None:
     assert settings.admin_telegram_ids == frozenset({10, 20})
 
 
-def test_openrouter_model_has_no_code_default() -> None:
+def test_agentapi_model_has_no_code_default() -> None:
     settings = Settings(
         telegram_bot_token="token",
         admin_telegram_ids="10",  # type: ignore[arg-type]
         database_url="sqlite+aiosqlite:///:memory:",
-        openrouter_model="",
+        agentapi_model="",
     )
-    assert settings.openrouter_model == ""
+    assert settings.agentapi_model == ""
