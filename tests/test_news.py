@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.models import Base, BotState, NewsItem
 from app.config import Settings
 from app.bot.handlers import _generate_preview
-from app.services.errors import ServiceError
+from app.services.errors import EmptyGenerationError, ServiceError
 from app.services.hybrid import HybridPostGenerator
 from app.services.interfaces import GeneratedPost
 from app.services.news import (BBCNewsClient, GuardianNewsClient, NewsFilter, NewsRecord,
@@ -131,6 +131,25 @@ async def test_news_candidate_creates_auditable_preview_without_using_it(session
         draft = await HybridPostGenerator(generator, news_service, 100, 48, FixedRng()).generate(session, state)
         assert (draft.post_type, draft.news_source, draft.news_url) == ("news", "BBC News", item.url)
         assert item.status == "available"
+
+
+@pytest.mark.asyncio
+async def test_empty_news_generation_falls_back_to_regular_post(session_factory, caplog):
+    generator = SimpleNamespace(generate=AsyncMock(side_effect=[
+        EmptyGenerationError("empty"), GeneratedPost(text="обычный запасной пост")
+    ]))
+    news_service = SimpleNamespace(refresh=AsyncMock(return_value=0))
+    state = BotState(telegram_id=1, interval_minutes=60)
+    item = NewsItem(stable_hash="f" * 64, title="AI technology", description="new science",
+                    url="https://guardian.test/a", source="The Guardian", published_at=NOW, status="available")
+    async with session_factory() as session:
+        session.add_all([state, item]); await session.commit()
+        draft = await HybridPostGenerator(generator, news_service, 100, 48, FixedRng()).generate(session, state)
+        assert draft.text == "обычный запасной пост"
+        assert draft.post_type == "regular" and draft.news_item_id is None
+        assert item.status == "available"
+        assert generator.generate.await_count == 2
+    assert "source=The Guardian" in caplog.text
 
 
 @pytest.mark.asyncio

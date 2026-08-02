@@ -1,3 +1,4 @@
+import logging
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -7,8 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import BotState, NewsItem
 from app.repository import available_news, last_published_post, recent_posts
 from app.services.interfaces import GeneratedPost
+from app.services.errors import EmptyGenerationError
 from app.services.news import NewsService
 from app.services.openrouter import OpenRouterPostGenerator
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -36,8 +40,17 @@ class HybridPostGenerator:
             if candidates:
                 item = self.rng.choice(candidates)
                 prompt = self._news_prompt(item, history)
-                generated = await self.generator.generate(prompt, state.system_prompt)
-                return GeneratedDraft(generated.text, "news", item.id, item.source, item.url)
+                try:
+                    generated = await self.generator.generate(prompt, state.system_prompt)
+                    return GeneratedDraft(generated.text, "news", item.id, item.source, item.url)
+                except EmptyGenerationError:
+                    logger.warning(
+                        "Empty news generation; falling back to regular post source=%s news_item_id=%s",
+                        item.source, item.id,
+                    )
+        return await self._generate_regular(state, history)
+
+    async def _generate_regular(self, state: BotState, history: list[str]) -> GeneratedDraft:
         prompt = state.topic or "Создай новый пост по актуальной теме профиля."
         if history:
             prompt += "\n\nНе повторяй идеи и формулировки недавних публикаций:\n" + "\n".join(f"- {x[:300]}" for x in history)

@@ -1,6 +1,6 @@
 import httpx
 
-from app.services.errors import ServiceError
+from app.services.errors import EmptyGenerationError, ServiceError
 from app.services.interfaces import GeneratedPost
 
 THREADS_TEXT_LIMIT = 500
@@ -48,7 +48,7 @@ class OpenRouterPostGenerator:
             data = response.json()
             content = data["choices"][0]["message"]["content"]
             if not isinstance(content, str) or not content.strip():
-                raise ServiceError("OpenRouter вернул пустой ответ без текста поста. Попробуйте ещё раз; если ошибка повторяется, проверьте выбранную модель.")
+                raise EmptyGenerationError("OpenRouter вернул пустой ответ без текста поста. Попробуйте ещё раз; если ошибка повторяется, проверьте выбранную модель.")
             text = content.strip()
             finish_reason = data["choices"][0].get("finish_reason")
         except httpx.TimeoutException as exc:
@@ -57,10 +57,10 @@ class OpenRouterPostGenerator:
             raise ServiceError(f"OpenRouter вернул ошибку HTTP {exc.response.status_code}.") from exc
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise ServiceError("OpenRouter вернул некорректный или пустой ответ.") from exc
-        if not text:
-            raise ServiceError("OpenRouter вернул пустой ответ.")
         if finish_reason == "length":
             text = _remove_incomplete_last_word(text)
+        if not text:
+            raise EmptyGenerationError("OpenRouter вернул пустой ответ без завершённого текста поста.")
         text = _truncate_at_word_boundary(text, THREADS_TEXT_LIMIT)
         return GeneratedPost(text=text)
 
