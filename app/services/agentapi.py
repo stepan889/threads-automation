@@ -44,7 +44,7 @@ class AgentApiPostGenerator:
             raise ServiceError("AgentAPI не настроен: задайте AGENTAPI_KEY и AGENTAPI_MODEL.")
         messages = [{"role": "system", "content": f"{system_prompt or self.system_prompt}\nОтвет — только готовый завершённый текст, не более {THREADS_TEXT_LIMIT} символов. Обязательно закончи последнее слово и предложение."}]
         messages.append({"role": "user", "content": prompt or "Создай новый пост."})
-        payload = {"model": self.model, "messages": messages, "max_completion_tokens": max_completion_tokens}
+        payload = {"model": self.model, "messages": messages, "max_tokens": max_completion_tokens}
         if reasoning_effort:
             payload["reasoning"] = {"effort": reasoning_effort, "exclude": True}
         try:
@@ -59,7 +59,15 @@ class AgentApiPostGenerator:
         except httpx.TimeoutException as exc:
             raise ServiceError("AgentAPI не ответил вовремя. Попробуйте ещё раз.") from exc
         except httpx.HTTPStatusError as exc:
-            raise ServiceError(f"AgentAPI вернул ошибку HTTP {exc.response.status_code}.") from exc
+            detail = ""
+            try:
+                error_data = exc.response.json()
+                raw_detail = error_data.get("message") or error_data.get("error", {}).get("message")
+                if isinstance(raw_detail, str) and raw_detail.strip():
+                    detail = f": {raw_detail.strip()[:300]}"
+            except (ValueError, TypeError, AttributeError):
+                pass
+            raise ServiceError(f"AgentAPI вернул ошибку HTTP {exc.response.status_code}{detail}.") from exc
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise ServiceError("AgentAPI вернул некорректный или пустой ответ.") from exc
         if finish_reason == "length":

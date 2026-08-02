@@ -57,6 +57,14 @@ async def test_agentapi_http_errors_are_safe(status: int) -> None:
 
 
 @pytest.mark.asyncio
+async def test_agentapi_http_error_includes_safe_message() -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(400, json={"error": {"message": "Model slug is invalid"}}))
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(ServiceError, match="HTTP 400: Model slug is invalid"):
+            await AgentApiPostGenerator("key", "model", "system", client=client).generate()
+
+
+@pytest.mark.asyncio
 async def test_agentapi_timeout() -> None:
     def timeout(request):
         raise httpx.ReadTimeout("timeout", request=request)
@@ -91,7 +99,7 @@ async def test_agentapi_retry_options_are_sent() -> None:
         await AgentApiPostGenerator("key", "model", "system", client=client).generate(
             "short", max_completion_tokens=1600, reasoning_effort="low"
         )
-    assert captured["max_completion_tokens"] == 1600
+    assert captured["max_tokens"] == 1600
     assert captured["reasoning"] == {"effort": "low", "exclude": True}
 
 
