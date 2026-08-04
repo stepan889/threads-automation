@@ -195,7 +195,10 @@ async def test_manual_preview_labels_type_and_separates_source_link(session_fact
     rendered = status_message.edit_text.await_args.args[0]
     assert "Новостной пост" in rendered and "BBC News" in rendered
     assert '<a href="https://bbc.test/story">' in rendered
-    fsm.update_data.assert_awaited_once_with(draft="Текст без ссылки", post_type="news", news_item_id=7)
+    fsm.update_data.assert_awaited_once_with(
+        draft="Текст без ссылки", post_type="news", news_item_id=7,
+        draft_mode="news", source_note=None,
+    )
 
 
 @pytest.mark.asyncio

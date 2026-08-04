@@ -8,7 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import interval_menu, main_menu, preview_menu, settings_menu
+from app.bot.keyboards import cancel_note_menu, interval_menu, main_menu, preview_menu, settings_menu
 from app.config import Settings
 from app.repository import get_or_create_state, recent_posts
 from app.scheduler import AutopostScheduler
@@ -27,6 +27,13 @@ class EditSettings(StatesGroup):
 
 class SetCustomInterval(StatesGroup):
     minutes = State()
+
+
+class CreateNotePost(StatesGroup):
+    note = State()
+
+
+NOTE_MAX_LENGTH = 10_000
 
 
 async def _state(session: AsyncSession, telegram_id: int, settings: Settings):
@@ -69,7 +76,8 @@ async def _generate_preview(callback: CallbackQuery, session: AsyncSession, sett
     try:
         generated = await workflow.generate(state, session)
         await fsm.update_data(draft=generated.text, post_type=generated.post_type,
-                              news_item_id=generated.news_item_id)
+                              news_item_id=generated.news_item_id,
+                              draft_mode=generated.post_type, source_note=None)
         text = generated.text
         kind = "Новостной пост" if generated.post_type == "news" else "Обычный пост"
         provenance = ""
@@ -80,20 +88,89 @@ async def _generate_preview(callback: CallbackQuery, session: AsyncSession, sett
         await status_message.edit_text(f"Не удалось сгенерировать пост: {escape(str(exc))}", parse_mode="HTML")
 
 
-@router.callback_query(F.data.in_({"post_now", "regenerate"}))
+async def _generate_note_preview(message: Message, session: AsyncSession, settings: Settings,
+                                 workflow: PublishingWorkflow, fsm: FSMContext, note: str,
+                                 telegram_id: int) -> None:
+    bot_state = await _state(session, telegram_id, settings)
+    status_message = await message.answer("⏳ Генерирую пост…")
+    try:
+        generated = await workflow.generate_from_note(bot_state, note, session)
+        await fsm.update_data(draft=generated.text, post_type="note", source_note=note,
+                              news_item_id=None, draft_mode="note")
+        await fsm.set_state(None)
+        await status_message.edit_text(
+            f"Тип: <b>Пост из заметки</b>\n\n{escape(generated.text)}",
+            reply_markup=preview_menu(note=True), parse_mode="HTML",
+        )
+    except ServiceError as exc:
+        await status_message.edit_text(
+            f"Не удалось сгенерировать пост: {escape(str(exc))}",
+            reply_markup=cancel_note_menu(), parse_mode="HTML",
+        )
+
+
+@router.callback_query(F.data == "post_from_note")
+async def request_note(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(CreateNotePost.note)
+    await callback.message.answer(  # type: ignore[union-attr]
+        "Отправьте текст заметки, мысли или черновика. Я подготовлю на его основе пост для Threads.",
+        reply_markup=cancel_note_menu(),
+    )
+    await callback.answer()
+
+
+@router.message(CreateNotePost.note)
+async def receive_note(message: Message, session: AsyncSession, settings: Settings,
+                       workflow: PublishingWorkflow, state: FSMContext) -> None:
+    note = (message.text or "").strip()
+    if not note:
+        await message.answer("Пожалуйста, отправьте непустой текст заметки.", reply_markup=cancel_note_menu())
+        return
+    if len(note) > NOTE_MAX_LENGTH:
+        await message.answer(
+            f"Заметка слишком длинная. Максимум — {NOTE_MAX_LENGTH} символов.",
+            reply_markup=cancel_note_menu(),
+        )
+        return
+    await state.update_data(source_note=note, draft_mode="note", post_type="note", news_item_id=None)
+    await _generate_note_preview(message, session, settings, workflow, state, note, message.from_user.id)  # type: ignore[union-attr]
+
+
+@router.callback_query(F.data == "post_now")
 async def post_now(callback: CallbackQuery, session: AsyncSession, settings: Settings,
                    workflow: PublishingWorkflow, state: FSMContext) -> None:
     await callback.answer()
     await _generate_preview(callback, session, settings, workflow, state)
 
 
-@router.callback_query(F.data == "publish_draft")
+@router.callback_query(F.data.in_({"regenerate", "regenerate_note"}))
+async def regenerate(callback: CallbackQuery, session: AsyncSession, settings: Settings,
+                     workflow: PublishingWorkflow, state: FSMContext) -> None:
+    data = await state.get_data()
+    if callback.data == "regenerate_note" or data.get("draft_mode") == "note" or data.get("post_type") == "note":
+        note = data.get("source_note")
+        if not note:
+            await callback.answer(
+                "Черновик устарел после перезапуска. Создайте его заново через «Пост из заметок».",
+                show_alert=True,
+            )
+            return
+        await callback.answer()
+        await _generate_note_preview(callback.message, session, settings, workflow, state, note,
+                                     callback.from_user.id)  # type: ignore[arg-type]
+        return
+    await callback.answer()
+    await _generate_preview(callback, session, settings, workflow, state)
+
+
+@router.callback_query(F.data.in_({"publish_draft", "publish_note"}))
 async def publish_draft(callback: CallbackQuery, session: AsyncSession, settings: Settings,
                         workflow: PublishingWorkflow, state: FSMContext) -> None:
     data = await state.get_data()
     draft = data.get("draft")
     if not draft:
-        await callback.answer("Черновик устарел. Сгенерируйте заново.", show_alert=True)
+        await callback.answer("Черновик устарел после перезапуска. Создайте его заново.", show_alert=True)
         return
     if (await state.get_data()).get("publishing"):
         await callback.answer("Публикация уже выполняется.", show_alert=True)
@@ -102,7 +179,9 @@ async def publish_draft(callback: CallbackQuery, session: AsyncSession, settings
     await callback.answer()
     await callback.message.edit_text("⏳ Публикую в Threads…")  # type: ignore[union-attr]
     bot_state = await _state(session, callback.from_user.id, settings)
-    post = await workflow.publish_text(session, bot_state, draft, data.get("post_type", "regular"), data.get("news_item_id"))
+    post_type = data.get("post_type", "regular")
+    news_item_id = None if post_type == "note" else data.get("news_item_id")
+    post = await workflow.publish_text(session, bot_state, draft, post_type, news_item_id)
     await state.clear()
     if post is None:
         await callback.message.edit_text("ℹ️ Этот материал уже был опубликован. Повтор пропущен.")  # type: ignore[union-attr]
@@ -113,9 +192,13 @@ async def publish_draft(callback: CallbackQuery, session: AsyncSession, settings
 
 
 @router.callback_query(F.data == "cancel_draft")
-async def cancel_draft(callback: CallbackQuery, state: FSMContext) -> None:
+async def cancel_draft(callback: CallbackQuery, state: FSMContext, session: AsyncSession,
+                       settings: Settings) -> None:
     await state.clear()
-    await callback.message.edit_text("Публикация отменена.")  # type: ignore[union-attr]
+    bot_state = await _state(session, callback.from_user.id, settings)
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        "Публикация отменена.", reply_markup=main_menu(bot_state.is_running)
+    )
     await callback.answer()
 
 

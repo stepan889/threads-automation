@@ -7,6 +7,7 @@ def main_menu(is_running: bool = False) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text=toggle, callback_data="toggle")],
             [InlineKeyboardButton(text="✍️ Пост сейчас", callback_data="post_now")],
+            [InlineKeyboardButton(text="📝 Пост из заметок", callback_data="post_from_note")],
             [InlineKeyboardButton(text="⏱ Интервал", callback_data="interval")],
             [InlineKeyboardButton(text="📊 Статус", callback_data="status")],
             [InlineKeyboardButton(text="📚 История", callback_data="history")],
@@ -30,10 +31,18 @@ def interval_menu() -> InlineKeyboardMarkup:
     )
 
 
-def preview_menu() -> InlineKeyboardMarkup:
+def preview_menu(note: bool = False) -> InlineKeyboardMarkup:
+    publish_callback = "publish_note" if note else "publish_draft"
+    regenerate_callback = "regenerate_note" if note else "regenerate"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Опубликовать", callback_data="publish_draft")],
-        [InlineKeyboardButton(text="🔄 Перегенерировать", callback_data="regenerate"), InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_draft")],
+        [InlineKeyboardButton(text="✅ Опубликовать", callback_data=publish_callback)],
+        [InlineKeyboardButton(text="🔄 Перегенерировать", callback_data=regenerate_callback), InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_draft")],
+    ])
+
+
+def cancel_note_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_draft")],
     ])
 
 
